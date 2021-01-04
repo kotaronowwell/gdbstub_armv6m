@@ -320,7 +320,13 @@ void gdbStubRoutine(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    uint8_t data;
+    HAL_StatusTypeDef status;
+    status = HAL_UART_Receive(&huart2, &data, 1, 1000);
+    if (status != HAL_OK) {
+      continue;
+    }
+    (void)HAL_UART_Transmit(&huart2, &data, 1, 1000);
   }
   /* USER CODE END gdbStubRoutine */
 }
