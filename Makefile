@@ -69,7 +69,8 @@ Middlewares/Third_Party/FreeRTOS/Source/tasks.c \
 Middlewares/Third_Party/FreeRTOS/Source/timers.c \
 Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.c \
 Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c \
-Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM0/port.c
+Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM0/port.c \
+gdbstub/armv6m-stub.c
 
 # ASM sources
 ASM_SOURCES =  \
