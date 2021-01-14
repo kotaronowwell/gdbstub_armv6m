@@ -140,154 +140,53 @@ enum target_signal {
   TARGET_SIGNAL_PWR  = 32
 };
 
+int registers[NUMREGS];
+
 /***************************  ASSEMBLY CODE MACROS *************************/
 /* 									   */
-#if 0
-extern void trap_low();
+__attribute__((naked)) save_registers(void)
+{
+	asm volatile (
+		/* save register values to stub register array */
+		"LDR	R1, =registers\r\n"
+		/* save registers R0-R3, R12, LR, PC, xPSR */
+		"LDR	R0, [SP, #0x0]\r\n"		/* R0 */
+		"STR	R0, [R1, #0x0]\r\n"
+		"LDR	R0, [SP, #0x4]\r\n"		/* R1 */
+		"STR	R0, [R1, #0x4]\r\n"
+		"LDR	R0, [SP, #0x8]\r\n"		/* R2 */
+		"STR	R0, [R1, #0x8]\r\n"
+		"LDR	R0, [SP, #0xC]\r\n"		/* R3 */
+		"STR	R0, [R1, #0xC]\r\n"
+		"LDR	R0, [SP, #0x10]\r\n"	/* R12 */
+		"STR	R0, [R1, #0x30]\r\n"
+		"LDR	R0, [SP, #0x14]\r\n"	/* LR */
+		"STR	R0, [R1, #0x38]\r\n"
+		"LDR	R0, [SP, #0x18]\r\n"	/* PC */
+		"STR	R0, [R1, #0x3C]\r\n"
+		"LDR	R0, [SP, #0x1C]\r\n"	/* xPSR */
+		"STR	R0, [R1, #0x64]\r\n"
+		/* save other registers */
+		"STR	R4, [R1, #0x10]\r\n"
+		"STR	R5, [R1, #0x14]\r\n"
+		"STR	R6, [R1, #0x18]\r\n"
+		"STR	R7, [R1, #0x1C]\r\n"
+		"MOV	R0, R8\r\n"
+		"STR	R0, [R1, #0x20]\r\n"
+		"MOV	R0, R9\r\n"
+		"STR	R0, [R1, #0x24]\r\n"
+		"MOV	R0, R10\r\n"
+		"STR	R0, [R1, #0x28]\r\n"
+		"MOV	R0, R11\r\n"
+		"STR	R0, [R1, #0x2C]\r\n"
+		"MOV	R0, R12\r\n"
+		"STR	R0, [R1, #0x30]\r\n"
+		"SUB	R0, R0, #0x20\r\n"
+		"MOV	R0, SP\r\n"
+		"STR	R0, [R1, #0x34]\r\n"
+	);
+}
 
-asm("
-	.reserve trapstack, 1000 * 4, \"bss\", 8
-
-	.data
-	.align	4
-
-in_trap_handler:
-	.word	0
-
-	.text
-	.align 4
-
-! This function is called when any SPARC trap (except window overflow or
-! underflow) occurs.  It makes sure that the invalid register window is still
-! available before jumping into C code.  It will also restore the world if you
-! return from handle_exception.
-
-	.globl _trap_low
-_trap_low:
-	mov	%psr, %l0
-	mov	%wim, %l3
-
-	srl	%l3, %l0, %l4		! wim >> cwp
-	cmp	%l4, 1
-	bne	window_fine		! Branch if not in the invalid window
-	nop
-
-! Handle window overflow
-
-	mov	%g1, %l4		! Save g1, we use it to hold the wim
-	srl	%l3, 1, %g1		! Rotate wim right
-	tst	%g1
-	bg	good_wim		! Branch if new wim is non-zero
-	nop
-
-! At this point, we need to bring a 1 into the high order bit of the wim.
-! Since we don't want to make any assumptions about the number of register
-! windows, we figure it out dynamically so as to setup the wim correctly.
-
-	not	%g1			! Fill g1 with ones
-	mov	%g1, %wim		! Fill the wim with ones
-	nop
-	nop
-	nop
-	mov	%wim, %g1		! Read back the wim
-	inc	%g1			! Now g1 has 1 just to left of wim
-	srl	%g1, 1, %g1		! Now put 1 at top of wim
-	mov	%g0, %wim		! Clear wim so that subsequent save
-	nop				!  won't trap
-	nop
-	nop
-
-good_wim:
-	save	%g0, %g0, %g0		! Slip into next window
-	mov	%g1, %wim		! Install the new wim
-
-	std	%l0, [%sp + 0 * 4]	! save L & I registers
-	std	%l2, [%sp + 2 * 4]
-	std	%l4, [%sp + 4 * 4]
-	std	%l6, [%sp + 6 * 4]
-
-	std	%i0, [%sp + 8 * 4]
-	std	%i2, [%sp + 10 * 4]
-	std	%i4, [%sp + 12 * 4]
-	std	%i6, [%sp + 14 * 4]
-
-	restore				! Go back to trap window.
-	mov	%l4, %g1		! Restore %g1
-
-window_fine:
-	sethi	%hi(in_trap_handler), %l4
-	ld	[%lo(in_trap_handler) + %l4], %l5
-	tst	%l5
-	bg	recursive_trap
-	inc	%l5
-
-	set	trapstack+1000*4, %sp	! Switch to trap stack
-
-recursive_trap:
-	st	%l5, [%lo(in_trap_handler) + %l4]
-	sub	%sp,(16+1+6+1+72)*4,%sp	! Make room for input & locals
- 					! + hidden arg + arg spill
-					! + doubleword alignment
-					! + registers[72] local var
-
-	std	%g0, [%sp + (24 + 0) * 4] ! registers[Gx]
-	std	%g2, [%sp + (24 + 2) * 4]
-	std	%g4, [%sp + (24 + 4) * 4]
-	std	%g6, [%sp + (24 + 6) * 4]
-
-	std	%i0, [%sp + (24 + 8) * 4] ! registers[Ox]
-	std	%i2, [%sp + (24 + 10) * 4]
-	std	%i4, [%sp + (24 + 12) * 4]
-	std	%i6, [%sp + (24 + 14) * 4]
-					! F0->F31 not implemented
-	mov	%y, %l4
-	mov	%tbr, %l5
-	st	%l4, [%sp + (24 + 64) * 4] ! Y
-	st	%l0, [%sp + (24 + 65) * 4] ! PSR
-	st	%l3, [%sp + (24 + 66) * 4] ! WIM
-	st	%l5, [%sp + (24 + 67) * 4] ! TBR
-	st	%l1, [%sp + (24 + 68) * 4] ! PC
-	st	%l2, [%sp + (24 + 69) * 4] ! NPC
-
-					! CPSR and FPSR not impl
-
-	or	%l0, 0xf20, %l4
-	mov	%l4, %psr		! Turn on traps, disable interrupts
-
-	call	_handle_exception
-	add	%sp, 24 * 4, %o0	! Pass address of registers
-
-! Reload all of the registers that aren't on the stack
-
-	ld	[%sp + (24 + 1) * 4], %g1 ! registers[Gx]
-	ldd	[%sp + (24 + 2) * 4], %g2
-	ldd	[%sp + (24 + 4) * 4], %g4
-	ldd	[%sp + (24 + 6) * 4], %g6
-
-	ldd	[%sp + (24 + 8) * 4], %i0 ! registers[Ox]
-	ldd	[%sp + (24 + 10) * 4], %i2
-	ldd	[%sp + (24 + 12) * 4], %i4
-	ldd	[%sp + (24 + 14) * 4], %i6
-
-	ldd	[%sp + (24 + 64) * 4], %l0 ! Y & PSR
-	ldd	[%sp + (24 + 68) * 4], %l2 ! PC & NPC
-
-	restore				! Ensure that previous window is valid
-	save	%g0, %g0, %g0		!  by causing a window_underflow trap
-
-	mov	%l0, %y
-	mov	%l1, %psr		! Make sure that traps are disabled
-					! for rett
-
-	sethi	%hi(in_trap_handler), %l4
-	ld	[%lo(in_trap_handler) + %l4], %l5
-	dec	%l5
-	st	%l5, [%lo(in_trap_handler) + %l4]
-
-	jmpl	%l2, %g0		! Restore old PC
-	rett	%l3			! Restore old nPC
-");
-#endif
 /* Convert ch from a hex digit to an int */
 
 static int
@@ -452,77 +351,14 @@ hex2mem (unsigned char *buf, unsigned char *mem, int count, int may_fault)
 
   return mem;
 }
-#if 0
-/* This table contains the mapping between SPARC hardware trap types, and
-   signals, which are primarily what GDB understands.  It also indicates
-   which hardware traps we need to commandeer when initializing the stub. */
-
-static struct hard_trap_info
-{
-  unsigned char tt;		/* Trap type code for SPARClite */
-  unsigned char signo;		/* Signal that we map this trap into */
-} hard_trap_info[] = {
-  {1, SIGSEGV},			/* instruction access error */
-  {2, SIGILL},			/* privileged instruction */
-  {3, SIGILL},			/* illegal instruction */
-  {4, SIGEMT},			/* fp disabled */
-  {36, SIGEMT},			/* cp disabled */
-  {7, SIGBUS},			/* mem address not aligned */
-  {9, SIGSEGV},			/* data access exception */
-  {10, SIGEMT},			/* tag overflow */
-  {128+1, SIGTRAP},		/* ta 1 - normal breakpoint instruction */
-  {0, 0}			/* Must be last */
-};
-
-/* Set up exception handlers for tracing and breakpoints */
-
-void
-set_debug_traps (void)
-{
-  struct hard_trap_info *ht;
-
-  for (ht = hard_trap_info; ht->tt && ht->signo; ht++)
-    exceptionHandler(ht->tt, trap_low);
-
-  initialized = 1;
-}
-
-asm ("
-! Trap handler for memory errors.  This just sets mem_err to be non-zero.  It
-! assumes that %l1 is non-zero.  This should be safe, as it is doubtful that
-! 0 would ever contain code that could mem fault.  This routine will skip
-! past the faulting instruction after setting mem_err.
-
-	.text
-	.align 4
-
-_fltr_set_mem_err:
-	sethi %hi(_mem_err), %l0
-	st %l1, [%l0 + %lo(_mem_err)]
-	jmpl %l2, %g0
-	rett %l2+4
-");
-
-static void
-set_mem_fault_trap (int enable)
-{
-  extern void fltr_set_mem_err();
-  mem_err = 0;
-
-  if (enable)
-    exceptionHandler(9, fltr_set_mem_err);
-  else
-    exceptionHandler(9, trap_low);
-}
 
 /* Convert the SPARC hardware trap type code to a unix signal number. */
-#endif
 static int
-computeSignal (int tt)
+computeSignal (int exceptionVector)
 {
   int sigval;
 
-  switch (tt)
+  switch (exceptionVector)
     {
     case NO_EXCEPTION:
       sigval = -1;
@@ -577,50 +413,19 @@ hexToInt(char **ptr, int *intValue)
 
 extern void breakinst();
 
-static void
-handle_exception (unsigned long *registers)
+void
+handle_exception (int exceptionVector)
 {
-  int tt;			/* Trap type */
   int sigval;
   int addr;
   int length;
   char *ptr;
   unsigned long *sp;
 
-/* First, we must force all of the windows to be spilled out */
-#if 0 /* TODO */
-  asm("	save %sp, -64, %sp
-	save %sp, -64, %sp
-	save %sp, -64, %sp
-	save %sp, -64, %sp
-	save %sp, -64, %sp
-	save %sp, -64, %sp
-	save %sp, -64, %sp
-	save %sp, -64, %sp
-	restore
-	restore
-	restore
-	restore
-	restore
-	restore
-	restore
-	restore
-");
-#endif
-  if (registers[PC] == (unsigned long)breakinst)
-    {
-#if 0 /* TODO */
-      registers[PC] = registers[NPC];
-      registers[NPC] += 4;
-#endif
-    }
-
   sp = (unsigned long *)registers[SP];
 
-  tt = 0; /* TODO */
-
   /* reply to host that an exception has occurred */
-  sigval = computeSignal(tt);
+  sigval = computeSignal(exceptionVector);
   ptr = remcomOutBuffer;
 
   *ptr++ = 'T';
@@ -661,48 +466,11 @@ handle_exception (unsigned long *registers)
 	  break;
 
 	case 'g':		/* return the value of the CPU registers */
-#if 0 /* TODO */
-	  {
-	    ptr = remcomOutBuffer;
-	    ptr = mem2hex((char *)registers, ptr, 16 * 4, 0); /* G & O regs */
-	    ptr = mem2hex(sp + 0, ptr, 16 * 4, 0); /* L & I regs */
-	    memset(ptr, '0', 32 * 8); /* Floating point */
-	    mem2hex((char *)&registers[Y],
-		    ptr + 32 * 4 * 2,
-		    8 * 4,
-		    0);		/* Y, PSR, WIM, TBR, PC, NPC, FPSR, CPSR */
-	  }
-#endif
+	  mem2hex ((char *) registers, remcomOutBuffer, NUMREGBYTES, 0);
 	  break;
-
-	case 'G':	   /* set the value of the CPU registers - return OK */
-#if 0 /* TODO */
-	  {
-	    unsigned long *newsp, psr;
-
-	    psr = registers[PSR];
-
-	    hex2mem(ptr, (char *)registers, 16 * 4, 0); /* G & O regs */
-	    hex2mem(ptr + 16 * 4 * 2, sp + 0, 16 * 4, 0); /* L & I regs */
-	    hex2mem(ptr + 64 * 4 * 2, (char *)&registers[Y],
-		    8 * 4, 0);	/* Y, PSR, WIM, TBR, PC, NPC, FPSR, CPSR */
-
-	    /* See if the stack pointer has moved.  If so, then copy the saved
-	       locals and ins to the new location.  This keeps the window
-	       overflow and underflow routines happy.  */
-
-	    newsp = (unsigned long *)registers[SP];
-	    if (sp != newsp)
-	      sp = memcpy(newsp, sp, 16 * 4);
-
-	    /* Don't allow CWP to be modified. */
-
-	    if (psr != registers[PSR])
-	      registers[PSR] = (psr & 0x1f) | (registers[PSR] & ~0x1f);
-
-	    strcpy(remcomOutBuffer,"OK");
-	  }
-#endif
+	case 'G':		/* set the value of the CPU registers - return OK */
+	  hex2mem (ptr, (char *) registers, NUMREGBYTES, 0);
+	  strcpy (remcomOutBuffer, "OK");
 	  break;
 
 	case 'm':	  /* mAA..AA,LLLL  Read LLLL bytes at address AA..AA */
@@ -743,7 +511,7 @@ handle_exception (unsigned long *registers)
 
 	  if (hexToInt(&ptr, &addr))
 	    {
-	      registers[PC] = addr; /* TODO */
+	      registers[PC] = addr;
 	    }
 
 /* Need to flush the instruction cache here, as we may have deposited a
@@ -756,11 +524,6 @@ handle_exception (unsigned long *registers)
 	  /* kill the program */
 	case 'k' :		/* do nothing */
 	  break;
-#if 0 /* TODO */
-	case 't':		/* Test feature */
-	  asm (" std %f30,[%sp]");
-	  break;
-#endif
 	case 'r':		/* Reset */
 #if 0 /* TODO */
 	  asm ("call 0

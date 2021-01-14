@@ -33,6 +33,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+void putDebugChar(uint8_t data);	/* write a single character      */
+int getDebugChar(void);	/* read and return a single char */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -402,5 +404,19 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
+void putDebugChar(uint8_t data)
+{
+  HAL_UART_Transmit(&huart2, &data, 1, 1000);
+}
+
+int getDebugChar(void)
+{
+  uint8_t data = 0;
+
+  HAL_UART_Receive(&huart2, &data, 1, 1000);
+
+  return data;
+}
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
