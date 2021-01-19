@@ -319,16 +319,12 @@ void StartDefaultTask(void *argument)
 void gdbStubRoutine(void *argument)
 {
   /* USER CODE BEGIN gdbStubRoutine */
+  int sigval = 0;
+  init_registers();
   /* Infinite loop */
   for(;;)
   {
-    uint8_t data;
-    HAL_StatusTypeDef status;
-    status = HAL_UART_Receive(&huart2, &data, 1, 1000);
-    if (status != HAL_OK) {
-      continue;
-    }
-    (void)HAL_UART_Transmit(&huart2, &data, 1, 1000);
+    handle_exception(sigval);
   }
   /* USER CODE END gdbStubRoutine */
 }
@@ -414,7 +410,13 @@ int getDebugChar(void)
 {
   uint8_t data = 0;
 
-  HAL_UART_Receive(&huart2, &data, 1, 1000);
+  for (;;) {
+    HAL_StatusTypeDef status;
+    status = HAL_UART_Receive(&huart2, &data, 1, 1000);
+    if (status == HAL_OK) {
+      break;
+    }
+  }
 
   return data;
 }

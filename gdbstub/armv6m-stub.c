@@ -95,24 +95,22 @@ extern int getDebugChar();	/* read and return a single char */
 /************************************************************************/
 /* BUFMAX defines the maximum number of characters in inbound/outbound buffers*/
 /* at least NUMREGBYTES*2 are needed for register packets */
-#define BUFMAX 128
+#define BUFMAX 256
 
 static int initialized = 0;	/* !0 means we've been initialized */
 
 static const char hexchars[]="0123456789abcdef";
 
-#define NUMREGS 26
+#define NUMREGS 17
 
 /* Number of bytes of registers.  */
 #define NUMREGBYTES (NUMREGS * 4)
-/* defined at arm-tdep.c */
+
 enum regnames { R0, R1, R2, R3, /*  0  1  2  3 */
                 R4, R5, R6, R7, /*  4  5  6  7 */
                 R8, R9, R10, R11,	/*  8  9 10 11 */
                 R12, SP, LR, PC,	/* 12 13 14 15 */
-                F0, F1, F2, F3,	/* 16 17 18 19 */
-                F4, F5, F6, F7,	/* 20 21 22 23 */
-                FPS, CPSR }; /* 24 25       */
+                xPSR }; /* 16 */
 
 #define NO_EXCEPTION  0
 #define EXCEPTION_NMI 1
@@ -149,7 +147,7 @@ __attribute__((naked)) save_registers(void)
 	asm volatile (
 		/* save register values to stub register array */
 		"LDR	R1, =registers\r\n"
-		/* save registers R0-R3, R12, LR, PC, xPSR */
+		/* save registers R0-R3, R12, LR, PC, xPSR from stack */
 		"LDR	R0, [SP, #0x0]\r\n"		/* R0 */
 		"STR	R0, [R1, #0x0]\r\n"
 		"LDR	R0, [SP, #0x4]\r\n"		/* R1 */
@@ -165,25 +163,54 @@ __attribute__((naked)) save_registers(void)
 		"LDR	R0, [SP, #0x18]\r\n"	/* PC */
 		"STR	R0, [R1, #0x3C]\r\n"
 		"LDR	R0, [SP, #0x1C]\r\n"	/* xPSR */
-		"STR	R0, [R1, #0x64]\r\n"
+		"STR	R0, [R1, #0x40]\r\n"
 		/* save other registers */
+		"STR	R4, [R1, #0x10]\r\n"  /* R4 */
+		"STR	R5, [R1, #0x14]\r\n"  /* R5 */
+		"STR	R6, [R1, #0x18]\r\n"  /* R6 */
+		"STR	R7, [R1, #0x1C]\r\n"  /* R7 */
+		"MOV	R0, R8\r\n"
+		"STR	R0, [R1, #0x20]\r\n"  /* R8 */
+		"MOV	R0, R9\r\n"
+		"STR	R0, [R1, #0x24]\r\n"  /* R9 */
+		"MOV	R0, R10\r\n"
+		"STR	R0, [R1, #0x28]\r\n"  /* R10 */
+		"MOV	R0, R11\r\n"
+		"STR	R0, [R1, #0x2C]\r\n"  /* R11 */
+		"MOV	R0, SP\r\n"
+		"STR	R0, [R1, #0x34]\r\n"  /* SP */
+	);
+}
+
+__attribute__((naked)) init_registers(void)
+{
+	asm volatile (
+		/* save register values to stub register array */
+		"LDR	R1, =registers\r\n"
+		"STR	R0, [R1, #0x0]\r\n"
+		"STR	R1, [R1, #0x4]\r\n"
+		"STR	R2, [R1, #0x8]\r\n"
+		"STR	R3, [R1, #0xC]\r\n"
 		"STR	R4, [R1, #0x10]\r\n"
 		"STR	R5, [R1, #0x14]\r\n"
 		"STR	R6, [R1, #0x18]\r\n"
 		"STR	R7, [R1, #0x1C]\r\n"
 		"MOV	R0, R8\r\n"
-		"STR	R0, [R1, #0x20]\r\n"
+		"STR	R0, [R1, #0x20]\r\n"  /* R8 */
 		"MOV	R0, R9\r\n"
-		"STR	R0, [R1, #0x24]\r\n"
+		"STR	R0, [R1, #0x24]\r\n"  /* R9 */
 		"MOV	R0, R10\r\n"
-		"STR	R0, [R1, #0x28]\r\n"
+		"STR	R0, [R1, #0x28]\r\n"  /* R10 */
 		"MOV	R0, R11\r\n"
-		"STR	R0, [R1, #0x2C]\r\n"
+		"STR	R0, [R1, #0x2C]\r\n"  /* R11 */
 		"MOV	R0, R12\r\n"
-		"STR	R0, [R1, #0x30]\r\n"
-		"SUB	R0, R0, #0x20\r\n"
+		"STR	R0, [R1, #0x30]\r\n"  /* R12 */
 		"MOV	R0, SP\r\n"
-		"STR	R0, [R1, #0x34]\r\n"
+		"STR	R0, [R1, #0x34]\r\n"  /* SP */
+		"MOV	R0, LR\r\n"
+		"STR	R0, [R1, #0x38]\r\n"  /* LR */
+		"MOV	R0, PC\r\n"
+		"STR	R0, [R1, #0x3C]\r\n"  /* PC */
 	);
 }
 
@@ -423,7 +450,7 @@ handle_exception (int exceptionVector)
   unsigned long *sp;
 
   sp = (unsigned long *)registers[SP];
-
+#if 0
   /* reply to host that an exception has occurred */
   sigval = computeSignal(exceptionVector);
   ptr = remcomOutBuffer;
@@ -447,7 +474,7 @@ handle_exception (int exceptionVector)
   *ptr++ = 0;
 
   putpacket(remcomOutBuffer);
-
+#endif
   while (1)
     {
       remcomOutBuffer[0] = 0;
