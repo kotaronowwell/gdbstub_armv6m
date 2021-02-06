@@ -101,6 +101,7 @@ static int initialized = 0;	/* !0 means we've been initialized */
 
 static const char hexchars[]="0123456789abcdef";
 
+#define NUMREGS_ALL 23
 #define NUMREGS 17
 
 /* Number of bytes of registers.  */
@@ -110,7 +111,9 @@ enum regnames { R0, R1, R2, R3, /*  0  1  2  3 */
                 R4, R5, R6, R7, /*  4  5  6  7 */
                 R8, R9, R10, R11,	/*  8  9 10 11 */
                 R12, SP, LR, PC,	/* 12 13 14 15 */
-                xPSR }; /* 16 */
+                xPSR,				/* 16 */
+				MSP, PSP, PRIMASK, BASEPRI,	/* 17 18 19 20 */
+				FAULTMASK, CONTROL };		/* 21 22 */
 
 #define NO_EXCEPTION  0
 #define EXCEPTION_NMI 1
@@ -138,7 +141,7 @@ enum target_signal {
   TARGET_SIGNAL_PWR  = 32
 };
 
-int registers[NUMREGS];
+int registers[NUMREGS_ALL];
 
 /***************************  ASSEMBLY CODE MACROS *************************/
 /* 									   */
@@ -445,36 +448,10 @@ handle_exception (int exceptionVector)
 {
   int sigval;
   int addr;
+  int index;
   int length;
   char *ptr;
-  unsigned long *sp;
 
-  sp = (unsigned long *)registers[SP];
-#if 0
-  /* reply to host that an exception has occurred */
-  sigval = computeSignal(exceptionVector);
-  ptr = remcomOutBuffer;
-
-  *ptr++ = 'T';
-  *ptr++ = hexchars[sigval >> 4];
-  *ptr++ = hexchars[sigval & 0xf];
-
-  *ptr++ = hexchars[PC >> 4];
-  *ptr++ = hexchars[PC & 0xf];
-  *ptr++ = ':';
-  ptr = mem2hex((char *)&registers[PC], ptr, 4, 0);
-  *ptr++ = ';';
-
-  *ptr++ = hexchars[SP >> 4];
-  *ptr++ = hexchars[SP & 0xf];
-  *ptr++ = ':';
-  ptr = mem2hex((char *)&sp, ptr, 4, 0);
-  *ptr++ = ';';
-
-  *ptr++ = 0;
-
-  putpacket(remcomOutBuffer);
-#endif
   while (1)
     {
       remcomOutBuffer[0] = 0;
@@ -525,6 +502,27 @@ handle_exception (int exceptionVector)
 	      && *ptr++ == ':')
 	    {
 	      if (hex2mem(ptr, (char *)addr, length, 1))
+		strcpy(remcomOutBuffer, "OK");
+	      else
+		strcpy(remcomOutBuffer, "E03");
+	    }
+	  else
+	    strcpy(remcomOutBuffer, "E02");
+	  break;
+
+	case 'p': /* pn... read CPU register value return r... */
+	  if (hexToInt(&ptr, &index))
+	    {
+			mem2hex ((char *)registers[index], remcomOutBuffer, 4, 0);				
+		}
+	  break;
+
+	case 'P': /* Pn...=r... write CPU register value return OK */
+	  if (hexToInt(&ptr, &index)
+	      && *ptr++ == '='
+	      && hexToInt(&ptr, &addr))
+	    {
+	      if (hex2mem(ptr, (char *)&registers[index], 4, 1))
 		strcpy(remcomOutBuffer, "OK");
 	      else
 		strcpy(remcomOutBuffer, "E03");
