@@ -126,21 +126,6 @@ enum regnames { R0, R1, R2, R3, /*  0  1  2  3 */
 #define EXECPTION_PEND_SV 14
 #define EXECPIONT_SYSTICK 15
 
-/*! Definition of GDB target signals. Data taken from the GDB 6.8
-    source. Only those we use defined here. */
-enum target_signal {
-  TARGET_SIGNAL_NONE =  0,
-  TARGET_SIGNAL_INT  =  2,
-  TARGET_SIGNAL_ILL  =  4,
-  TARGET_SIGNAL_TRAP =  5,
-  TARGET_SIGNAL_FPE  =  8,
-  TARGET_SIGNAL_BUS  = 10,
-  TARGET_SIGNAL_SEGV = 11,
-  TARGET_SIGNAL_ALRM = 14,
-  TARGET_SIGNAL_USR2 = 31,
-  TARGET_SIGNAL_PWR  = 32
-};
-
 int registers[NUMREGS_ALL];
 
 /***************************  ASSEMBLY CODE MACROS *************************/
@@ -391,17 +376,17 @@ computeSignal (int exceptionVector)
   switch (exceptionVector)
     {
     case NO_EXCEPTION:
-      sigval = -1;
+      sigval = 0;
       break;
     case EXCEPTION_HARD_FAULT:
     case EXECPTION_USAGE_FAULT:
-      sigval = TARGET_SIGNAL_ILL;
+      sigval = 11;
       break;
     case EXECPTION_BUS_FAULT:
-      sigval = TARGET_SIGNAL_BUS;
+      sigval = 10;
       break;
     default:
-      sigval = TARGET_SIGNAL_USR2;  /* "software generated"*/
+      sigval = 7;	/* "software generated"        */
       break;
     }
   return (sigval);
@@ -452,6 +437,17 @@ handle_exception (int exceptionVector)
   int length;
   char *ptr;
 
+  /* reply to host that an exception has occurred */
+  sigval = computeSignal (exceptionVector);
+  if(sigval > 0){
+    remcomOutBuffer[0] = 'S';
+    remcomOutBuffer[1] = hexchars[(sigval >> 4) & 0xF];
+    remcomOutBuffer[2] = hexchars[sigval & 0xF];
+    remcomOutBuffer[3] = 0;
+
+    putpacket (remcomOutBuffer);
+  }
+
   while (1)
     {
       remcomOutBuffer[0] = 0;
@@ -466,7 +462,9 @@ handle_exception (int exceptionVector)
 	  remcomOutBuffer[3] = 0;
 	  break;
 
-	case 'd':		/* toggle debug flag */
+	case 'H':
+	case '!':
+	  strcpy (remcomOutBuffer, "OK");
 	  break;
 
 	case 'g':		/* return the value of the CPU registers */
@@ -545,7 +543,8 @@ handle_exception (int exceptionVector)
  */
 
 	  return;
-
+	case 's':
+	  return;
 	  /* kill the program */
 	case 'k' :		/* do nothing */
 	  break;
@@ -555,6 +554,8 @@ handle_exception (int exceptionVector)
 		nop ");
 #endif
 	  break;
+	case 'D':		/* Detach */
+		return;
 	}			/* switch */
 
       /* reply to the request */
